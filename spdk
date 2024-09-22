@@ -1,0 +1,64 @@
+#include <spdk/app.h>  
+#include <spdk/blob.h>  
+#include <string>  
+#include <iostream>  
+
+class BlobStore {  
+public:  
+    BlobStore(const std::string& bdev_name, int num_clusters)  
+        : bdev_name_(bdev_name), num_clusters_(num_clusters) {  
+        spdk_app_opts_init(&opts_);  
+        opts_.name = "BlobStoreApp";  
+        opts_.reactor_scheduling = SPDK_APP_SCHEDULING_LLF;  
+    }  
+
+    void init() {  
+        spdk_app_start(&opts_, blobstore_start_cb, this);  
+    }  
+
+    void cleanup() {  
+        // 清理资源  
+        spdk_app_stop(0);  
+    }  
+
+    void create_blob() {  
+        // 创建Blob的实现  
+        spdk_blob_create(bs_, NULL, num_clusters_, blob_create_cb, this);  
+    }  
+
+private:  
+    static void blobstore_start_cb(void* arg) {  
+        BlobStore* store = static_cast<BlobStore*>(arg);  
+        // 假设Blob存储在某个块设备上  
+        spdk_blobfs_create(store->bdev_name_.c_str(), NULL, store->blobstore_create_cb, store);  
+    }  
+
+    static void blobstore_create_cb(int bdev, void* ctx) {  
+        BlobStore* store = static_cast<BlobStore*>(ctx);  
+        // Blob Store创建完成后的处理  
+        store->create_blob();  
+    }  
+
+    static void blob_create_cb(spdk_blob_id blobid, int bdev, void* ctx) {  
+        BlobStore* store = static_cast<BlobStore*>(ctx);  
+        std::cout << "Blob created successfully with ID: " << blobid << std::endl;  
+        // 这里可以进行后续的处理  
+    }  
+
+    std::string bdev_name_;  
+    int num_clusters_;  
+    struct spdk_app_opts opts_;  
+};  
+
+// main 函数示例  
+int main(int argc, char** argv) {  
+    // 初始化 SPDK，并传入 BlobStore 配置  
+    BlobStore blobStore("nvme0n1", 2);  
+    blobStore.init();  
+
+    // 在这里运行事件循环，或使用其他相关逻辑  
+
+    // 可根据需要添加退出逻辑  
+    blobStore.cleanup();  
+    return 0;  
+}
