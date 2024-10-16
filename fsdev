@@ -1,19 +1,26 @@
-#pragma omp parallel  
-{  
-    struct io_uring ring;  
-    // 初始化每个线程的 io_uring 实例  
-    io_uring_queue_init(8, &ring, 0);   
+#include <iostream>
+#include <string>
 
-    #pragma omp for schedule(dynamic, 1)  
-    for (int64_t i = 0; i < sample_num; i++) {  
-        auto &label_for_search = random_query_filters[i];  
+// 函数：将时间字符串转换为秒数
+double convertTimeToSeconds(const std::string& timeStr) {
+    int hours, minutes, seconds;
+    double totalSeconds;
+    double fractionalSeconds;
 
-        // 执行搜索操作  
-        cached_beam_search(samples + (i * sample_aligned_dim), 1, l_search,   
-                           tmp_result_ids_64.data() + i, tmp_result_dists.data() + i,   
-                           beamwidth, filtered_search, label_for_search, false);  
-    }  
+    // 解析小时、分钟和秒
+    sscanf(timeStr.c_str(), "%2d:%2d:%2d.%lf", &hours, &minutes, &seconds, &fractionalSeconds);
 
-    // 清理 io_uring 实例  
-    io_uring_queue_exit(&ring);  
+    // 计算总秒数
+    totalSeconds = hours * 3600 + minutes * 60 + seconds + fractionalSeconds;
+
+    return totalSeconds;
+}
+
+int main() {
+    std::string timeStr = "00:00:01.567";
+    double seconds = convertTimeToSeconds(timeStr);
+
+    std::cout << "The time in seconds is: " << seconds << std::endl;
+
+    return 0;
 }
