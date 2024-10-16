@@ -5,14 +5,17 @@
 double convertTimeToSeconds(const std::string& timeStr) {
     std::istringstream ss(timeStr);
     int hours, minutes, seconds;
-    double milliseconds;
+    std::string millisecondsStr;
     char colon; // 用于读取冒号字符
 
     // 读取小时、分钟、秒和毫秒
-    ss >> std::setw(2) >> hours >> colon >> std::setw(2) >> minutes >> colon >> std::setw(2) >> seconds >> milliseconds;
+    ss >> std::setw(2) >> hours >> colon >> std::setw(2) >> minutes >> colon >> std::setw(2) >> seconds >> millisecondsStr;
+
+    // 将毫秒字符串转换为小数
+    double milliseconds = std::stod(millisecondsStr) / 1000.0;
 
     // 计算总秒数
-    double totalSeconds = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000.0;
+    double totalSeconds = hours * 3600 + minutes * 60 + seconds + milliseconds;
 
     return totalSeconds;
 }
