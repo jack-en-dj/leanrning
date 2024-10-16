@@ -1,17 +1,18 @@
 #include <iostream>
-#include <string>
+#include <sstream>
+#include <iomanip>
 
-// 函数：将时间字符串转换为秒数
 double convertTimeToSeconds(const std::string& timeStr) {
+    std::istringstream ss(timeStr);
     int hours, minutes, seconds;
-    double totalSeconds;
-    double fractionalSeconds;
+    double milliseconds;
+    char colon; // 用于读取冒号字符
 
-    // 解析小时、分钟和秒
-    sscanf(timeStr.c_str(), "%2d:%2d:%2d.%lf", &hours, &minutes, &seconds, &fractionalSeconds);
+    // 读取小时、分钟、秒和毫秒
+    ss >> std::setw(2) >> hours >> colon >> std::setw(2) >> minutes >> colon >> std::setw(2) >> seconds >> milliseconds;
 
     // 计算总秒数
-    totalSeconds = hours * 3600 + minutes * 60 + seconds + fractionalSeconds;
+    double totalSeconds = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000.0;
 
     return totalSeconds;
 }
