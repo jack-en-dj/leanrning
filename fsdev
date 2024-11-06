@@ -1,278 +1,176 @@
-#include <arm_neon.h>  
+template <typename T> float DistanceInnerProduct<T>::inner_product
 
-float DistanceL2Int8_compare(const int8_t *a, const int8_t *b, uint32_t size) {  
-    float32x4_t r = vdupq_n_f32(0.0f); // 初始化结果为0  
-    const int8_t *pX = a;  
-    const int8_t *pY = b;  
+#define NEON_DOT(addr1, addr2, dest, tmp1, tmp2)                      \
+    tmp1 = vld1q_f32(addr1);                                          \
+    tmp2 = vld1q_f32(addr2);                                          \
+    tmp1 = vmulq_f32(tmp1, tmp2);                                     \
+    dest = vaddq_f32(dest, tmp1);  
 
-    // 处理每次16字节（16个8位整数）  
-    while (size >= 16) {  
-        int8x16_t x = vld1q_s8(pX); // 加载16个8位带符号整数  
-        int8x16_t y = vld1q_s8(pY); // 加载16个8位带符号整数  
-        int8x16_t r1 = vsubq_s8(x, y); // 逐元素相减  
+// 计算点积的函数  
+float neon_dot(const float *a, const float *b, uint32_t size) {  
+    float32x4_t sum = vdupq_n_f32(0.0f); // 初始化sum为0  
+    float32x4_t l0, l1;                  // 临时变量  
+    uint32_t D = (size + 3) & ~3U;       // 向上对齐为4的倍数  
+    uint32_t DR = D % 8;                 // 对于最后不满8的部分  
+    uint32_t DD = D - DR;                // 向下对齐到8的倍数  
 
-        // 计算平方并累加  
-        int16x8_t squared_low = vmull_s8(vget_low_s8(r1), vget_low_s8(r1)); // 处理低8个元素  
-        int16x8_t squared_high = vmull_s8(vget_high_s8(r1), vget_high_s8(r1)); // 处理高8个元素  
+    const float *l = a;  
+    const float *r = b;  
+    const float *e_l = l + DD;  
+    const float *e_r = r + DD;  
+    float unpack[4] __attribute__((aligned(16))) = {0, 0, 0, 0};  
 
-        // 将平方值转换为float并累加  
-        float32x4_t r_squared_low = vcvtq_f32_s32(vget_low_s32(squared_low));  
-        float32x4_t r_squared_high = vcvtq_f32_s32(vget_low_s32(squared_high));  
-        
-        r = vaddq_f32(r, r_squared_low);  
-        r = vaddq_f32(r, r_squared_high);  
-
-        pX += 16;  
-        pY += 16;  
-        size -= 16;  
+    // 如果有剩余的元素（DR部分），单独处理  
+    if (DR) {  
+        // 处理最后不足8元素的情况（可以根据具体需求调整）  
+        NEON_DOT(e_l, e_r, sum, l0, r0);  
     }  
 
-    // 处理剩余的8字节  
-    while (size >= 8) {  
-        int8x8_t x = vld1_s8(pX); // 加载8个8位带符号整数  
-        int8x8_t y = vld1_s8(pY); // 加载8个8位带符号整数  
-        int8x8_t r2 = vsub_s8(x, y); // 逐元素相减  
-
-        // 计算平方  
-        int16x8_t squared = vmull_s8(r2, r2);  
-        float32x4_t r_squared = vcvt_f32_s32(vget_low_s32(squared));  
-        
-        r = vaddq_f32(r, r_squared);  
-
-        pX += 8;  
-        pY += 8;  
-        size -= 8;  
+    // 每次处理8个元素，共两次处理16个元素  
+    for (uint32_t i = 0; i < DD; i += 8, l += 8, r += 8) {  
+        NEON_DOT(l, r, sum, l0, r0);  
+        NEON_DOT(l + 4, r + 4, sum, l1, r1);  
     }  
 
-    // 处理剩余的4字节  
-    while (size >= 4) {  
-        int8x4_t x = vld1_s8(pX); // 加载4个8位带符号整数  
-        int8x4_t y = vld1_s8(pY); // 加载4个8位带符号整数  
-        int8x4_t r2 = vsub_s8(x, y); // 逐元素相减  
+    // 将sum的结果存储到unpack数组中  
+    vst1q_f32(unpack, sum);  
+    float result = unpack[0] + unpack[1] + unpack[2] + unpack[3];  
 
-        // 计算平方  
-        int16x4_t squared = vmull_s8(r2, r2);  
-        float32x4_t r_squared = vcvt_f32_s32(squared);  
-        
-        r = vaddq_f32(r, r_squared);  
-
-        pX += 4;  
-        pY += 4;  
-        size -= 4;  
-    }  
-
-    // 最后将结果归约  
-    float32x2_t sum = vadd_f32(vget_low_f32(r), vget_high_f32(r));  
-    sum = vpadd_f32(sum, sum); // 水平加法  
-    return vget_lane_f32(sum, 0); // 返回结果  
+    return result;  
 }
 
 
 
+
+
+template <typename T> float DistanceFastL2<T>::norm(const T *a, uint32_t size) const
+
 #include <arm_neon.h>  
 
-float DistanceL2Float_compare(const float *a, const float *b, uint32_t size) const {  
-    float32x4_t sum = vdupq_n_f32(0.0f); // 初始化结果为0  
-    uint32_t niters = size / 8; // 假设 size 可被 8 整除  
+#define NEON_L2NORM(addr, dest, tmp)                        \
+    tmp = vld1q_f32(addr);                                 \
+    tmp = vmulq_f32(tmp, tmp);                            \
+    dest = vaddq_f32(dest, tmp);  
+
+// 计算L2范数的函数  
+float neon_l2norm(const float *a, uint32_t size) {  
+    float32x4_t sum = vdupq_n_f32(0.0f); // 初始化sum为0  
+    float32x4_t l0, l1;                   // 临时变量  
+    uint32_t D = (size + 3) & ~3U;        // 对齐为4的倍数  
+    uint32_t DR = D % 8;                  // 剩余的不满8的部分  
+    uint32_t DD = D - DR;                 // 向下对齐到8的倍数  
+
+    const float *l = a;  
+    const float *e_l = l + DD;            // 超出处理范围的指针  
+    float unpack[4] __attribute__((aligned(16))) = {0, 0, 0, 0};  
+
+    // 如果有剩余的元素，处理不满8元素的情况  
+    if (DR) {  
+        NEON_L2NORM(e_l, sum, l0);  
+    }  
+
+    // 每次处理8个元素  
+    for (uint32_t i = 0; i < DD; i += 8, l += 8) {  
+        NEON_L2NORM(l, sum, l0);  
+        NEON_L2NORM(l + 4, sum, l1);  
+    }  
+
+    // 将结果存储到unpack数组中  
+    vst1q_f32(unpack, sum);  
+    float result = unpack[0] + unpack[1] + unpack[2] + unpack[3];  
+
+    return result; // 返回L2范数的平方根  
+}
+
+
+
+
+
+
+float AVXDistanceInnerProductFloat::compare(const float *a, const float *b, uint32_t size) const
+
+
+#include <arm_neon.h>  
+
+float neon_distance_inner_product(const float *a, const float *b, uint32_t size) {  
+    float result = 0.0f;  
+#define NEON_DOT(addr1, addr2, dest, tmp1, tmp2)                      \
+    tmp1 = vld1q_f32(addr1);                                          \
+    tmp2 = vld1q_f32(addr2);                                          \
+    tmp1 = vmulq_f32(tmp1, tmp2);                                     \
+    dest = vaddq_f32(dest, tmp1);                                   
+
+    float32x4_t sum = vdupq_n_f32(0.0f); // 初始化sum为0  
+    float32x4_t l0, l1, r0, r1;  
+    uint32_t D = (size + 3) & ~3U;       // 向上对齐到4的倍数  
+    uint32_t DR = D % 8;                 // 剩余不满8的部分  
+    uint32_t DD = D - DR;                // 向下对齐到8的倍数  
+    const float *l = a;  
+    const float *r = b;  
+    const float *e_l = l + DD;           // 超出处理范围的指针  
+    const float *e_r = r + DD;           // 超出处理范围的指针  
+
+    float unpack[4] __attribute__((aligned(16))) = {0, 0, 0, 0};  
+
+    // 如果有剩余未处理的元素（不足8），单独处理  
+    if (DR) {  
+        NEON_DOT(e_l, e_r, sum, l0, r0);  
+    }  
+
+    // 每次处理8个元素  
+    for (uint32_t i = 0; i < DD; i += 8, l += 8, r += 8) {  
+        NEON_DOT(l, r, sum, l0, r0);  
+        NEON_DOT(l + 4, r + 4, sum, l1, r1);  
+    }  
+
+    // 将结果存储到unpack数组中  
+    vst1q_f32(unpack, sum);  
+    result = unpack[0] + unpack[1] + unpack[2] + unpack[3];  
+
+    return -result; // 返回负的内积结果  
+}
+
+
+
+
+
+float DistanceL2Float::compare(const float *a, const float *b, uint32_t size) const
+
+
+
+#include <arm_neon.h>  
+
+float neon_distance_l2_compare(const float *a, const float *b, uint32_t size) {  
+    float32x4_t sum1 = vdupq_n_f32(0.0f); // 初始化sum为0  
+    float32x4_t sum2 = vdupq_n_f32(0.0f); // 用于处理两组4个元素  
+    uint32_t niters = size / 8; // 每次处理8个浮点数  
 
     for (uint32_t j = 0; j < niters; j++) {  
-        // 每次处理8个浮点数  
-        const float *a_ptr = a + 8 * j;  
-        const float *b_ptr = b + 8 * j;  
+        // 加载8个浮点数（分成两组4个）  
+        float32x4_t a_vec1 = vld1q_f32(a + 8 * j);  
+        float32x4_t a_vec2 = vld1q_f32(a + 8 * j + 4);  
+        float32x4_t b_vec1 = vld1q_f32(b + 8 * j);  
+        float32x4_t b_vec2 = vld1q_f32(b + 8 * j + 4);  
 
-        // 预读下一个8个元素 (不完全需要，因为NEON没有直接的预取指令，但可以考虑)  
-        if (j < (niters - 1)) {  
-            __builtin_prefetch(a_ptr + 8, 0, 3);  
-            __builtin_prefetch(b_ptr + 8, 0, 3);  
-        }  
-
-        // 加载8个浮点数  
-        float32x4_t a_vec1 = vld1q_f32(a_ptr);       // 读入 a[0:3]  
-        float32x4_t a_vec2 = vld1q_f32(a_ptr + 4);   // 读入 a[4:7]  
-        float32x4_t b_vec1 = vld1q_f32(b_ptr);       // 读入 b[0:3]  
-        float32x4_t b_vec2 = vld1q_f32(b_ptr + 4);   // 读入 b[4:7]  
-
-        // 计算 (a - b)  
+        // 计算差值  
         float32x4_t tmp_vec1 = vsubq_f32(a_vec1, b_vec1);  
         float32x4_t tmp_vec2 = vsubq_f32(a_vec2, b_vec2);  
 
-        // 计算平方并累加  
-        sum = vaddq_f32(sum, vmulq_f32(tmp_vec1, tmp_vec1));  
-        sum = vaddq_f32(sum, vmulq_f32(tmp_vec2, tmp_vec2));  
+        // 使用fmuladd的方式计算平方并累加  
+        sum1 = vmlaq_f32(sum1, tmp_vec1, tmp_vec1);  
+        sum2 = vmlaq_f32(sum2, tmp_vec2, tmp_vec2);  
     }  
 
-    // 水平加法以合并 sum  
+    // 将两组结果相加  
+    float32x4_t sum = vaddq_f32(sum1, sum2);  
+    
+    // 进行水平相加  
     float32x2_t sum_low = vget_low_f32(sum);  
     float32x2_t sum_high = vget_high_f32(sum);  
-    sum_low = vadd_f32(sum_low, sum_high); // 合并高低部分  
-    sum_low = vpadd_f32(sum_low, sum_low); // 最后将两部分再相加  
+    sum_low = vadd_f32(sum_low, sum_high); // 将高低部分相加  
 
-    return vget_lane_f32(sum_low, 0); // 返回最终结果  
-}
+    // 最后做一次相加，合并为单个结果  
+    result = vget_lane_f32(sum_low, 0) + vget_lane_f32(sum_low, 1);  
 
-
-
-#include <arm_neon.h>  
-#include <stdexcept>  
-#include <type_traits>  
-#include <iostream>  
-
-template <typename T>  
-class DistanceInnerProduct {  
-public:  
-    float inner_product(const T *a, const T *b, uint32_t size) const;  
-};  
-
-template <typename T>  
-float DistanceInnerProduct<T>::inner_product(const T *a, const T *b, uint32_t size) const {  
-    if (!std::is_floating_point<T>::value) {  
-        std::cerr << "ERROR: Inner Product only defined for float currently." << std::endl;  
-        throw std::runtime_error("ERROR: Inner Product only defined for float currently.");  
-    }  
-
-    float32x4_t sum = vdupq_n_f32(0.0f); // 初始化结果为0  
-
-    uint32_t D = (size + 3) & ~3U; // 向上对齐到4的倍数  
-    uint32_t DR = D % 8;           // 不足8个元素的剩余部分  
-    uint32_t DD = D - DR;          // 可处理的元素数量  
-    const float *l = a;  
-    const float *r = b;  
-
-    // 处理剩余元素（<= 4）  
-    if (DR) {  
-        for (uint32_t i = 0; i < DR; i += 4) {  
-            float32x4_t a_vec = vld1q_f32(l + i);  
-            float32x4_t b_vec = vld1q_f32(r + i);  
-            sum = vmlaq_f32(sum, a_vec, b_vec); // sum += a_vec * b_vec  
-        }  
-    }  
-
-    // 主循环处理每16个原始元素  
-    for (uint32_t i = 0; i < DD; i += 8, l += 8, r += 8) {  
-        // 加载8个元素  
-        float32x4_t a_vec1 = vld1q_f32(l);   // 前4个元素  
-        float32x4_t b_vec1 = vld1q_f32(r);   // 前4个元素  
-        float32x4_t a_vec2 = vld1q_f32(l + 4); // 后4个元素  
-        float32x4_t b_vec2 = vld1q_f32(r + 4); // 后4个元素  
-
-        // 计算内积  
-        sum = vmlaq_f32(sum, a_vec1, b_vec1); // sum += a_vec1 * b_vec1  
-        sum = vmlaq_f32(sum, a_vec2, b_vec2); // sum += a_vec2 * b_vec2  
-    }  
-
-    // 水平加法合并结果  
-    float32x2_t sum_low = vget_low_f32(sum);  
-    float32x2_t sum_high = vget_high_f32(sum);  
-    sum_low = vadd_f32(sum_low, sum_high); // 合并高低部分  
-    sum_low = vpadd_f32(sum_low, sum_low);  // 最后将两部分再相加  
-
-    return vget_lane_f32(sum_low, 0); // 返回最终的内积  
-}
-
-
-
-#include <arm_neon.h>  
-#include <stdexcept>  
-#include <type_traits>  
-#include <iostream>  
-
-template <typename T>  
-class DistanceFastL2 {  
-public:  
-    float norm(const T *a, uint32_t size) const;  
-};  
-
-template <typename T>  
-float DistanceFastL2<T>::norm(const T *a, uint32_t size) const {  
-    if (!std::is_floating_point<T>::value) {  
-        std::cerr << "ERROR: FastL2 only defined for float currently." << std::endl;  
-        throw std::runtime_error("ERROR: FastL2 only defined for float currently.");  
-    }  
-
-    float32x4_t sum = vdupq_n_f32(0.0f); // 初始化结果为0  
-
-    // 确保size是4的倍数，如果不是则向上对齐  
-    uint32_t D = (size + 3) & ~3U;  
-    uint32_t DR = D % 8; // 对8元素的剩余部分  
-    uint32_t DD = D - DR; // 可处理的元素数量  
-    const float *l = a;  
-
-    // 处理剩余元素（最多4个元素）  
-    if (DR) {  
-        for (uint32_t i = 0; i < DR; i += 4) {  
-            float32x4_t a_vec = vld1q_f32(l + i);  
-            sum = vmlaq_f32(sum, a_vec, a_vec); // sum += a_vec * a_vec  
-        }  
-    }  
-
-    // 主循环处理每8个原始元素  
-    for (uint32_t i = 0; i < DD; i += 8, l += 8) {  
-        // 加载8个浮点数  
-        float32x4_t a_vec1 = vld1q_f32(l);   // 前4个  
-        float32x4_t a_vec2 = vld1q_f32(l + 4); // 后4个  
-
-        // 计算L2范数 (平方和)  
-        sum = vmlaq_f32(sum, a_vec1, a_vec1); // sum += a_vec1 * a_vec1  
-        sum = vmlaq_f32(sum, a_vec2, a_vec2); // sum += a_vec2 * a_vec2  
-    }  
-
-    // 水平加法合并所有结果  
-    float32x2_t sum_low = vget_low_f32(sum);  
-    float32x2_t sum_high = vget_high_f32(sum);  
-    sum_low = vadd_f32(sum_low, sum_high); // 合并高低部分  
-    sum_low = vpadd_f32(sum_low, sum_low);  // 最后将两部分再相加  
-
-    return sqrtf(vget_lane_f32(sum_low, 0)); // 返回最终的L2范数  
-}
-
-
-#include <arm_neon.h>  
-#include <stdexcept>  
-#include <iostream>  
-
-class NEONDistanceInnerProductFloat {  
-public:  
-    float compare(const float *a, const float *b, uint32_t size) const;  
-};  
-
-float NEONDistanceInnerProductFloat::compare(const float *a, const float *b, uint32_t size) const {  
-    float32x4_t sum = vdupq_n_f32(0.0f); // 初始化结果为0  
-
-    // 处理大小对齐  
-    uint32_t D = (size + 3) & ~3U; // 向上对齐到4的倍数  
-    uint32_t DR = D % 8; // 最后处理剩余的元素  
-    uint32_t DD = D - DR; // 可处理的元素数量  
-
-    const float *l = a;  
-    const float *r = b;  
-
-    // 处理剩余元素（最多3个元素）  
-    if (DR) {  
-        for (uint32_t i = 0; i < DR; i += 4) {  
-            float32x4_t a_vec = vld1q_f32(l + i); // 加载a  
-            float32x4_t b_vec = vld1q_f32(r + i); // 加载b  
-            sum = vmlaq_f32(sum, a_vec, b_vec);   // sum += a_vec * b_vec  
-        }  
-    }  
-
-    // 主循环，每次处理8个元素  
-    for (uint32_t i = 0; i < DD; i += 8, l += 8, r += 8) {  
-        // 加载8个浮点数  
-        float32x4_t a_vec1 = vld1q_f32(l);       // 前4个  
-        float32x4_t a_vec2 = vld1q_f32(l + 4);   // 后4个  
-        float32x4_t b_vec1 = vld1q_f32(r);       // 前4个  
-        float32x4_t b_vec2 = vld1q_f32(r + 4);   // 后4个  
-        
-        // 更新sum  
-        sum = vmlaq_f32(sum, a_vec1, b_vec1); // sum += a_vec1 * b_vec1  
-        sum = vmlaq_f32(sum, a_vec2, b_vec2); // sum += a_vec2 * b_vec2  
-    }  
-
-    // 水平加法合并结果  
-    float32x2_t sum_low = vget_low_f32(sum);  
-    float32x2_t sum_high = vget_high_f32(sum);  
-    sum_low = vadd_f32(sum_low, sum_high); // 合并低高部分  
-    sum_low = vpadd_f32(sum_low, sum_low);  // 最后将两部分再相加  
-
-    return vget_lane_f32(sum_low, 0); // 返回最终内积的结果  
+    return result; // 返回L2距离的平方和  
 }
