@@ -1,34 +1,20 @@
-def parse_log(file_path):  
-    jump_lines_by_cpu = {}  
-
-    # 从文件读取内容  
-    with open(file_path, 'r') as file:  
-        log_lines = file.readlines()  
-    
-    # 处理日志，分组  
-    for line in log_lines:  
-        line = line.strip()  # 去除行首尾空白字符  
-        if line.startswith("process"):  
-            print(line)  # 直接打印 process 行  
-            continue  
-        
-        # 判断 jump it 行并分组  
-        if line.startswith("[") and "jump it" in line:  
-            # 获取 CPU 信息（从行中提取）  
-            cpu_identifier = line.split(",")[4]  
-            if cpu_identifier not in jump_lines_by_cpu:  
-                jump_lines_by_cpu[cpu_identifier] = []  
-            jump_lines_by_cpu[cpu_identifier].append(line)  
-
-    # 按时间戳进行排序并输出结果  
-    for cpu in sorted(jump_lines_by_cpu.keys()):  
-        # 对分组进行排序  
-        sorted_jump_lines = sorted(jump_lines_by_cpu[cpu], key=lambda x: x.split(",")[1])  
-        for entry in sorted_jump_lines:  
-            print(entry)  
-
-# 指定日志文件路径  
-file_path = 'log.txt'  
-
-# 解析日志  
-parse_log(file_path)
+大家好，我叫xx，全日制本科学历，计算机专业，目前有三年多的软件开发工作经历。
+1.在杭州紫光担任软件开发工程师期间，我主要负责数据库操作和软件模块开发，使用的主要语言是C/C++,并参与开发了多进程任务，进行了数据库性能优化，积累了oracle数据库经验，提升了软件架构涉及的能力。
+2.第二份工作在云间信息，担任嵌入式软件工程师，主要负责开源固件中上层应用，其中包括防火墙，时间，系统启动项等模块的维护，熟练使用c/c++，具有大型项目源码开发与维护的经验。
+杭州紫光通信技术股份有限公司  软件开发工程师                                 2021.06-2023.04
+            项目名称：浙江移动部省数据中心支撑
+            项目描述：清洗海量数据并上传远端服务器
+            使用技术：C/C++,多进程，信号量，共享内存，oracle视图
+	根据数据模型，字段繁多，数据量大，且影响C++ oci查询效率等问题，学习并应用Oracle存储过程，开启parallel分时段构建数据，避免影响正常运行，提高数据采集效率
+	关闭进程的IO,以及屏蔽信号实现调度程序，周期性调用现有的日粒度，周粒度生成数据业务
+	采用共享内存，信号量，心跳等机制实现周期性监测业务程序（系统托管）的运行情况，写入日志，保证系统的稳定性
+云尖信息技术有限公司  嵌入式软件工程师                                 2023.05-2024.05
+            项目名称：云智2U2, 河图（基于国外的openBmc二次开发，负责上层应用）
+            项目描述：监控服务器设备的硬件状态、执行远程管理操作以及提供对设备的监控和控制功能
+               使用技术： C/C++ (因为基于开源，采用yocto构建，比较复杂，涉及到很多)
+ 
+	防火墙模块：根据需求文档，梳理逻辑。基于iptables工具实现黑白名单，ipv4/ipv6，端口常规功能实现。对于特定功能，需要阅读Linux内核源码并配置
+net/netfilter/ 下 xt_iprange.c，xt_time.c，xt_mac.c 相应的宏定义启用相应的模块，以实现IP地址范围匹配，该规则有效时间，MAC地址匹配功能。         
+	时间日期模块：基于原生的time,time-sync包，加入时区设置，NTP时间同步
+协助日志定位：journal日志时间跳跃的问题
+	日常的问题单开发与维护，模块总结文档输出
