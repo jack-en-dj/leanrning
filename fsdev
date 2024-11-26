@@ -1,67 +1,22 @@
 import tkinter as tk
-import paramiko
-import threading
 
-# 定义一个 SSHManager 类（与上面的示例相同）
-class SSHManager:
-    def __init__(self, hostname, port, username, password):
-        self.client = paramiko.SSHClient()
-        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # 自动接受主机密钥
-        self.hostname = hostname
-        self.port = port
-        self.username = username
-        self.password = password
-        self.channel = None
+def get_and_set_value(entry, label):
+    # 获取Entry控件的值
+    value = entry.get()
+    label.config(text=f"你输入的值是: {value}")
+    # 设置Entry控件的值
+    entry.delete(0, tk.END)
+    entry.insert(0, "新值")
 
-    def connect(self):
-        """建立 SSH 连接"""
-        self.client.connect(self.hostname, self.port, self.username, self.password)
-        self.channel = self.client.invoke_shell()  # 创建一个交互式 shell
-        self.channel.setblocking(0)  # 设置为非阻塞模式
-
-    def send_command(self, command):
-        """发送命令"""
-        if self.channel is not None:
-            self.channel.send(command + "\n")
-            time.sleep(1)  # 等待命令执行
-
-            # 获取输出
-            while not self.channel.recv_ready():
-                time.sleep(0.1)
-
-            output = self.channel.recv(1024).decode('utf-8')
-            print(f"Command Output: {output}")
-
-    def close(self):
-        """关闭 SSH 连接"""
-        if self.client:
-            self.client.close()
-
-# 事件处理函数
-def on_button_click(command):
-    """按钮点击时发送命令"""
-    ssh_manager.send_command(command)
-
-# GUI 窗口
 root = tk.Tk()
-root.title("SSH Command Sender")
 
-# SSHManager 实例
-ssh_manager = SSHManager('example.com', 22, 'your_username', 'your_password')
-ssh_manager.connect()
+entry1 = tk.Entry(root)
+entry1.pack()
 
-# 创建按钮并绑定命令
-button1 = tk.Button(root, text="Send Command 1", command=lambda: on_button_click("echo 'Command 1'"))
-button1.pack()
+label = tk.Label(root, text="")
+label.pack()
 
-button2 = tk.Button(root, text="Send Command 2", command=lambda: on_button_click("echo 'Command 2'"))
-button2.pack()
+button = tk.Button(root, text="获取并设置值", command=lambda: get_and_set_value(entry1, label))
+button.pack()
 
-button3 = tk.Button(root, text="Send Command 3", command=lambda: on_button_click("echo 'Command 3'"))
-button3.pack()
-
-# 启动 GUI 事件循环
 root.mainloop()
-
-# 关闭连接（GUI 关闭后）
-ssh_manager.close()
