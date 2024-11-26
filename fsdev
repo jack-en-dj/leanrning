@@ -1,176 +1,52 @@
-template <typename T> float DistanceInnerProduct<T>::inner_product
+import paramiko
+import time
 
-#define NEON_DOT(addr1, addr2, dest, tmp1, tmp2)                      \
-    tmp1 = vld1q_f32(addr1);                                          \
-    tmp2 = vld1q_f32(addr2);                                          \
-    tmp1 = vmulq_f32(tmp1, tmp2);                                     \
-    dest = vaddq_f32(dest, tmp1);  
+# 创建 SSH 客户端
+client = paramiko.SSHClient()
 
-// 计算点积的函数  
-float neon_dot(const float *a, const float *b, uint32_t size) {  
-    float32x4_t sum = vdupq_n_f32(0.0f); // 初始化sum为0  
-    float32x4_t l0, l1;                  // 临时变量  
-    uint32_t D = (size + 3) & ~3U;       // 向上对齐为4的倍数  
-    uint32_t DR = D % 8;                 // 对于最后不满8的部分  
-    uint32_t DD = D - DR;                // 向下对齐到8的倍数  
+# 自动添加主机密钥（避免第一次连接时询问是否信任）
+client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-    const float *l = a;  
-    const float *r = b;  
-    const float *e_l = l + DD;  
-    const float *e_r = r + DD;  
-    float unpack[4] __attribute__((aligned(16))) = {0, 0, 0, 0};  
+# 连接到远程主机
+hostname = 'example.com'  # 远程服务器的 IP 或域名
+port = 22                 # 默认 SSH 端口是 22
+username = 'your_username'  # 你的 SSH 用户名
+password = 'your_password'  # 你的 SSH 密码
 
-    // 如果有剩余的元素（DR部分），单独处理  
-    if (DR) {  
-        // 处理最后不足8元素的情况（可以根据具体需求调整）  
-        NEON_DOT(e_l, e_r, sum, l0, r0);  
-    }  
+try:
+    # 连接到远程服务器
+    client.connect(hostname, port, username, password)
 
-    // 每次处理8个元素，共两次处理16个元素  
-    for (uint32_t i = 0; i < DD; i += 8, l += 8, r += 8) {  
-        NEON_DOT(l, r, sum, l0, r0);  
-        NEON_DOT(l + 4, r + 4, sum, l1, r1);  
-    }  
+    # 创建一个交互式 shell
+    channel = client.invoke_shell()
 
-    // 将sum的结果存储到unpack数组中  
-    vst1q_f32(unpack, sum);  
-    float result = unpack[0] + unpack[1] + unpack[2] + unpack[3];  
+    # 设置为非阻塞模式
+    channel.setblocking(0)
 
-    return result;  
-}
+    # 等待 shell 启动完成
+    time.sleep(1)
 
+    # 发送 'journalctl -f' 命令来实时查看日志
+    channel.send("sudo journalctl -f\n")
+    time.sleep(1)  # 等待命令启动
 
+    # 需要输入 sudo 密码
+    while True:
+        if channel.recv_ready():
+            output = channel.recv(1024).decode('utf-8')
+            print(output, end="")  # 打印实时输出
 
+            # 如果输出包含 'password' 字样，表示需要输入密码
+            if 'password' in output.lower():
+                print("Detected sudo password prompt.")
+                channel.send('your_sudo_password\n')  # 发送 sudo 密码
+                time.sleep(1)  # 等待密码被接受
 
+        # 防止 CPU 占用过高
+        time.sleep(0.1)
 
-template <typename T> float DistanceFastL2<T>::norm(const T *a, uint32_t size) const
-
-#include <arm_neon.h>  
-
-#define NEON_L2NORM(addr, dest, tmp)                        \
-    tmp = vld1q_f32(addr);                                 \
-    tmp = vmulq_f32(tmp, tmp);                            \
-    dest = vaddq_f32(dest, tmp);  
-
-// 计算L2范数的函数  
-float neon_l2norm(const float *a, uint32_t size) {  
-    float32x4_t sum = vdupq_n_f32(0.0f); // 初始化sum为0  
-    float32x4_t l0, l1;                   // 临时变量  
-    uint32_t D = (size + 3) & ~3U;        // 对齐为4的倍数  
-    uint32_t DR = D % 8;                  // 剩余的不满8的部分  
-    uint32_t DD = D - DR;                 // 向下对齐到8的倍数  
-
-    const float *l = a;  
-    const float *e_l = l + DD;            // 超出处理范围的指针  
-    float unpack[4] __attribute__((aligned(16))) = {0, 0, 0, 0};  
-
-    // 如果有剩余的元素，处理不满8元素的情况  
-    if (DR) {  
-        NEON_L2NORM(e_l, sum, l0);  
-    }  
-
-    // 每次处理8个元素  
-    for (uint32_t i = 0; i < DD; i += 8, l += 8) {  
-        NEON_L2NORM(l, sum, l0);  
-        NEON_L2NORM(l + 4, sum, l1);  
-    }  
-
-    // 将结果存储到unpack数组中  
-    vst1q_f32(unpack, sum);  
-    float result = unpack[0] + unpack[1] + unpack[2] + unpack[3];  
-
-    return result; // 返回L2范数的平方根  
-}
-
-
-
-
-
-
-float AVXDistanceInnerProductFloat::compare(const float *a, const float *b, uint32_t size) const
-
-
-#include <arm_neon.h>  
-
-float neon_distance_inner_product(const float *a, const float *b, uint32_t size) {  
-    float result = 0.0f;  
-#define NEON_DOT(addr1, addr2, dest, tmp1, tmp2)                      \
-    tmp1 = vld1q_f32(addr1);                                          \
-    tmp2 = vld1q_f32(addr2);                                          \
-    tmp1 = vmulq_f32(tmp1, tmp2);                                     \
-    dest = vaddq_f32(dest, tmp1);                                   
-
-    float32x4_t sum = vdupq_n_f32(0.0f); // 初始化sum为0  
-    float32x4_t l0, l1, r0, r1;  
-    uint32_t D = (size + 3) & ~3U;       // 向上对齐到4的倍数  
-    uint32_t DR = D % 8;                 // 剩余不满8的部分  
-    uint32_t DD = D - DR;                // 向下对齐到8的倍数  
-    const float *l = a;  
-    const float *r = b;  
-    const float *e_l = l + DD;           // 超出处理范围的指针  
-    const float *e_r = r + DD;           // 超出处理范围的指针  
-
-    float unpack[4] __attribute__((aligned(16))) = {0, 0, 0, 0};  
-
-    // 如果有剩余未处理的元素（不足8），单独处理  
-    if (DR) {  
-        NEON_DOT(e_l, e_r, sum, l0, r0);  
-    }  
-
-    // 每次处理8个元素  
-    for (uint32_t i = 0; i < DD; i += 8, l += 8, r += 8) {  
-        NEON_DOT(l, r, sum, l0, r0);  
-        NEON_DOT(l + 4, r + 4, sum, l1, r1);  
-    }  
-
-    // 将结果存储到unpack数组中  
-    vst1q_f32(unpack, sum);  
-    result = unpack[0] + unpack[1] + unpack[2] + unpack[3];  
-
-    return -result; // 返回负的内积结果  
-}
-
-
-
-
-
-float DistanceL2Float::compare(const float *a, const float *b, uint32_t size) const
-
-
-
-#include <arm_neon.h>  
-
-float neon_distance_l2_compare(const float *a, const float *b, uint32_t size) {  
-    float32x4_t sum1 = vdupq_n_f32(0.0f); // 初始化sum为0  
-    float32x4_t sum2 = vdupq_n_f32(0.0f); // 用于处理两组4个元素  
-    uint32_t niters = size / 8; // 每次处理8个浮点数  
-
-    for (uint32_t j = 0; j < niters; j++) {  
-        // 加载8个浮点数（分成两组4个）  
-        float32x4_t a_vec1 = vld1q_f32(a + 8 * j);  
-        float32x4_t a_vec2 = vld1q_f32(a + 8 * j + 4);  
-        float32x4_t b_vec1 = vld1q_f32(b + 8 * j);  
-        float32x4_t b_vec2 = vld1q_f32(b + 8 * j + 4);  
-
-        // 计算差值  
-        float32x4_t tmp_vec1 = vsubq_f32(a_vec1, b_vec1);  
-        float32x4_t tmp_vec2 = vsubq_f32(a_vec2, b_vec2);  
-
-        // 使用fmuladd的方式计算平方并累加  
-        sum1 = vmlaq_f32(sum1, tmp_vec1, tmp_vec1);  
-        sum2 = vmlaq_f32(sum2, tmp_vec2, tmp_vec2);  
-    }  
-
-    // 将两组结果相加  
-    float32x4_t sum = vaddq_f32(sum1, sum2);  
-    
-    // 进行水平相加  
-    float32x2_t sum_low = vget_low_f32(sum);  
-    float32x2_t sum_high = vget_high_f32(sum);  
-    sum_low = vadd_f32(sum_low, sum_high); // 将高低部分相加  
-
-    // 最后做一次相加，合并为单个结果  
-    result = vget_lane_f32(sum_low, 0) + vget_lane_f32(sum_low, 1);  
-
-    return result; // 返回L2距离的平方和  
-}
+except Exception as e:
+    print(f"Connection failed: {e}")
+finally:
+    # 关闭连接
+    client.close()
