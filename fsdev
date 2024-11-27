@@ -1,22 +1,10 @@
-import tkinter as tk
+import re
 
-def get_and_set_value(entry, label):
-    # 获取Entry控件的值
-    value = entry.get()
-    label.config(text=f"你输入的值是: {value}")
-    # 设置Entry控件的值
-    entry.delete(0, tk.END)
-    entry.insert(0, "新值")
+def extract_during_numbers(s):
+    pattern = r'during:\s*\[(\d+)\]'  # 匹配 "during: [数字]"
+    return re.findall(pattern, s)  # 返回所有匹配的数字
 
-root = tk.Tk()
-
-entry1 = tk.Entry(root)
-entry1.pack()
-
-label = tk.Label(root, text="")
-label.pack()
-
-button = tk.Button(root, text="获取并设置值", command=lambda: get_and_set_value(entry1, label))
-button.pack()
-
-root.mainloop()
+# 测试
+s = "开始一些文本 during: [60] 结束一些文本 during: [120] 和更多文本"
+numbers = extract_during_numbers(s)
+print(numbers)  # 输出: ['60', '120']
