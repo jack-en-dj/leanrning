@@ -1,106 +1,16 @@
-import tkinter as tk
-from tkinter import messagebox
-import paramiko
-import threading
-import os
+import re
 
-# 使用 paramiko 执行远程命令并重定向日志
-def run_journalctl_remote(host, port, username, password, output_dir):
-    try:
-        # 创建 SSH 客户端
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # 忽略密钥验证
+# 示例数据
+data = "read:Success一些内容abcd"  # 或者 "read:Successabcd"（没有内容）
 
-        # 连接到远程服务器
-        client.connect(host, port=port, username=username, password=password)
+# 正则表达式：匹配 read:Success 和 abcd 之间的数据
+pattern = r"read:Success(.*?)abcd"
 
-        # 确保输出目录存在
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+# 使用 re.search 提取匹配的部分
+match = re.search(pattern, data)
 
-        # 设置日志文件路径
-        log_file_path = os.path.join(output_dir, "journalctl_output.log")
-
-        # 执行 journalctl -f 命令并将输出重定向到文件
-        command = f"journalctl -f > {log_file_path} 2>&1"  # 将 stdout 和 stderr 都重定向到日志文件
-        
-        # 执行命令
-        stdin, stdout, stderr = client.exec_command(command)
-
-        # 等待命令完成，虽然 journalctl -f 会一直执行
-        stdout.channel.recv_exit_status()  # 由于 journalctl -f 一直在运行，recv_exit_status 会一直阻塞
-        print(f"Started journalctl -f, output is being saved to {log_file_path}")
-
-        # 主线程不会阻塞，所以需要确保长时间运行
-        client.close()
-
-    except Exception as e:
-        print(f"Error: {e}")
-        messagebox.showerror("Error", f"Failed to start journalctl: {e}")
-
-# 创建线程启动函数
-def start_journalctl_thread(host, port, username, password, output_dir):
-    # 创建并启动线程来运行远程 journalctl 命令
-    journal_thread = threading.Thread(target=run_journalctl_remote, args=(host, port, username, password, output_dir))
-    journal_thread.daemon = True  # 设置为守护线程，程序退出时线程也会退出
-    journal_thread.start()
-
-# 处理按钮点击事件
-def on_start_button_click():
-    host = entry_host.get()
-    port = entry_port.get()
-    username = entry_username.get()
-    password = entry_password.get()
-    output_dir = entry_output_dir.get()
-
-    # 输入验证
-    if not host or not port or not username or not password or not output_dir:
-        messagebox.showerror("Input Error", "Please provide all required inputs.")
-        return
-
-    try:
-        port = int(port)
-    except ValueError:
-        messagebox.showerror("Input Error", "Port should be an integer.")
-        return
-
-    # 启动线程
-    start_journalctl_thread(host, port, username, password, output_dir)
-    messagebox.showinfo("Success", "Started journalctl on remote server. Logs will be saved to the specified file.")
-
-# 创建 Tkinter 界面
-root = tk.Tk()
-root.title("Remote Journalctl Executor")
-
-# 创建输入框和标签
-label_host = tk.Label(root, text="Host:")
-label_host.grid(row=0, column=0, padx=10, pady=5)
-entry_host = tk.Entry(root)
-entry_host.grid(row=0, column=1, padx=10, pady=5)
-
-label_port = tk.Label(root, text="Port:")
-label_port.grid(row=1, column=0, padx=10, pady=5)
-entry_port = tk.Entry(root)
-entry_port.grid(row=1, column=1, padx=10, pady=5)
-
-label_username = tk.Label(root, text="Username:")
-label_username.grid(row=2, column=0, padx=10, pady=5)
-entry_username = tk.Entry(root)
-entry_username.grid(row=2, column=1, padx=10, pady=5)
-
-label_password = tk.Label(root, text="Password:")
-label_password.grid(row=3, column=0, padx=10, pady=5)
-entry_password = tk.Entry(root, show="*")
-entry_password.grid(row=3, column=1, padx=10, pady=5)
-
-label_output_dir = tk.Label(root, text="Output Directory:")
-label_output_dir.grid(row=4, column=0, padx=10, pady=5)
-entry_output_dir = tk.Entry(root)
-entry_output_dir.grid(row=4, column=1, padx=10, pady=5)
-
-# 创建按钮
-start_button = tk.Button(root, text="Start journalctl", command=on_start_button_click)
-start_button.grid(row=5, column=0, columnspan=2, pady=10)
-
-# 启动 Tkinter 主循环
-root.mainloop()
+if match:
+    extracted_data = match.group(1)  # 提取括号中的部分
+    print(f"提取的数据: '{extracted_data}'")
+else:
+    print("没有找到匹配的数据")
