@@ -1,10 +1,12 @@
 import re
 
-def extract_during_numbers(s):
-    pattern = r'during:\s*\[(\d+)\]'  # 匹配 "during: [数字]"
-    return re.findall(pattern, s)  # 返回所有匹配的数字
+def count_pattern_occurrences(s):
+    # 正则表达式匹配 "Writing to glpa [数字] failed."，忽略方括号中的数字
+    pattern = r'Writing to glpa \[\d+\] failed\.'  # 匹配 "Writing to glpa [数字] failed."
+    matches = re.findall(pattern, s)  # 查找所有匹配的项
+    return len(matches)  # 返回匹配项的数量
 
 # 测试
-s = "开始一些文本 during: [60] 结束一些文本 during: [120] 和更多文本"
-numbers = extract_during_numbers(s)
-print(numbers)  # 输出: ['60', '120']
+s = "Writing to glpa [123] failed. Writing to glpa [456] failed. Writing to glpa [789] failed."
+count = count_pattern_occurrences(s)
+print(count)  # 输出: 3
