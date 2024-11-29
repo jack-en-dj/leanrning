@@ -2,67 +2,48 @@
 #include <memory>
 #include <cstring>
 
-void merge_data(const std::unique_ptr<char[]>& demo1, size_t size1,
-                const std::unique_ptr<char[]>& demo2, size_t size2,
-                std::unique_ptr<char[]>& demo3, size_t& merged_size) {
-    // Step 1: 统计有效数据长度
-    size_t valid_size1 = 0, valid_size2 = 0;
-    for (size_t i = 0; i < size1; ++i) {
+void merge_data(const std::unique_ptr<char[]>& demo1, const std::unique_ptr<char[]>& demo2,
+                std::unique_ptr<char[]>& demo3, size_t size) {
+    // Step 1: 拷贝 demo1 的有效数据到 demo3
+    for (size_t i = 0; i < size; ++i) {
         if (demo1[i] != 0) {
-            ++valid_size1;
-        }
-    }
-    for (size_t i = 0; i < size2; ++i) {
-        if (demo2[i] != 0) {
-            ++valid_size2;
+            demo3[i] = demo1[i];  // 将 demo1 的有效数据拷贝到 demo3
         }
     }
 
-    // 合并后的数据长度（包含末尾一个 0）
-    merged_size = valid_size1 + valid_size2 + 1;
-    demo3 = std::make_unique<char[]>(merged_size);
-
-    // Step 2: 拷贝有效数据
-    size_t index = 0;
-    for (size_t i = 0; i < size1; ++i) {
-        if (demo1[i] != 0) {
-            demo3[index++] = demo1[i];
+    // Step 2: 用 demo2 的数据替换 demo3 中的 0 部分
+    for (size_t i = 0; i < size; ++i) {
+        if (demo3[i] == 0) {
+            demo3[i] = demo2[i];  // 如果 demo3 当前位置是 0，则用 demo2 的数据替换
         }
     }
-    for (size_t i = 0; i < size2; ++i) {
-        if (demo2[i] != 0) {
-            demo3[index++] = demo2[i];
-        }
-    }
-
-    // Step 3: 在末尾填充一个 0
-    demo3[index] = 0;
 }
 
 int main() {
-    // 创建 demo1 和 demo2 并初始化
-    size_t size1 = 10, size2 = 8;
-    auto demo1 = std::make_unique<char[]>(size1);
-    auto demo2 = std::make_unique<char[]>(size2);
+    // 假设 demo1 和 demo2 的长度一致
+    size_t size = 10;
 
-    std::memset(demo1.get(), 0, size1);
-    std::memset(demo2.get(), 0, size2);
+    // 创建 demo1、demo2 并初始化
+    auto demo1 = std::make_unique<char[]>(size);
+    auto demo2 = std::make_unique<char[]>(size);
+    auto demo3 = std::make_unique<char[]>(size);  // 合并后的空间，大小为 size
 
-    // 向 demo1 和 demo2 写入数据
-    std::strncpy(demo1.get(), "abc\0\0def", size1); // 包含有效数据 "abcdef"
-    std::strncpy(demo2.get(), "123\045", size2);    // 包含有效数据 "12345"
+    std::memset(demo1.get(), 0, size);
+    std::memset(demo2.get(), 0, size);
+    std::memset(demo3.get(), 0, size);
 
-    // 创建 demo3 并合并数据
-    std::unique_ptr<char[]> demo3;
-    size_t merged_size = 0;
+    // 模拟 demo1 和 demo2 的数据
+    std::strncpy(demo1.get(), "abc\0\0def", size); // 包含有效数据 "abcdef"
+    std::strncpy(demo2.get(), "123456789", size);  // 数据为 "123456789"
 
-    merge_data(demo1, size1, demo2, size2, demo3, merged_size);
+    // 合并 demo1 和 demo2 到 demo3
+    merge_data(demo1, demo2, demo3, size);
 
     // 输出合并后的数据
     std::cout << "Merged Data: ";
-    for (size_t i = 0; i < merged_size; ++i) {
+    for (size_t i = 0; i < size; ++i) {
         if (demo3[i] == 0) {
-            std::cout << "\\0";
+            std::cout << "\\0";  // 打印 '\0' 作为可见标记
         } else {
             std::cout << demo3[i];
         }
