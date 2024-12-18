@@ -1,20 +1,230 @@
-大家好，我叫xx，全日制本科学历，计算机专业，目前有三年多的软件开发工作经历。
-1.在杭州紫光担任软件开发工程师期间，我主要负责数据库操作和软件模块开发，使用的主要语言是C/C++,并参与开发了多进程任务，进行了数据库性能优化，积累了oracle数据库经验，提升了软件架构涉及的能力。
-2.第二份工作在云间信息，担任嵌入式软件工程师，主要负责开源固件中上层应用，其中包括防火墙，时间，系统启动项等模块的维护，熟练使用c/c++，具有大型项目源码开发与维护的经验。
-杭州紫光通信技术股份有限公司  软件开发工程师                                 2021.06-2023.04
-            项目名称：浙江移动部省数据中心支撑
-            项目描述：清洗海量数据并上传远端服务器
-            使用技术：C/C++,多进程，信号量，共享内存，oracle视图
-	根据数据模型，字段繁多，数据量大，且影响C++ oci查询效率等问题，学习并应用Oracle存储过程，开启parallel分时段构建数据，避免影响正常运行，提高数据采集效率
-	关闭进程的IO,以及屏蔽信号实现调度程序，周期性调用现有的日粒度，周粒度生成数据业务
-	采用共享内存，信号量，心跳等机制实现周期性监测业务程序（系统托管）的运行情况，写入日志，保证系统的稳定性
-云尖信息技术有限公司  嵌入式软件工程师                                 2023.05-2024.05
-            项目名称：云智2U2, 河图（基于国外的openBmc二次开发，负责上层应用）
-            项目描述：监控服务器设备的硬件状态、执行远程管理操作以及提供对设备的监控和控制功能
-               使用技术： C/C++ (因为基于开源，采用yocto构建，比较复杂，涉及到很多)
- 
-	防火墙模块：根据需求文档，梳理逻辑。基于iptables工具实现黑白名单，ipv4/ipv6，端口常规功能实现。对于特定功能，需要阅读Linux内核源码并配置
-net/netfilter/ 下 xt_iprange.c，xt_time.c，xt_mac.c 相应的宏定义启用相应的模块，以实现IP地址范围匹配，该规则有效时间，MAC地址匹配功能。         
-	时间日期模块：基于原生的time,time-sync包，加入时区设置，NTP时间同步
-协助日志定位：journal日志时间跳跃的问题
-	日常的问题单开发与维护，模块总结文档输出
+1. 创建头文件 DiskIndexBuilder.h
+这个文件会声明 DiskIndexBuilder 类及其用于初始化和构建磁盘索引的方法。
+// DiskIndexBuilder.h  
+#ifndef DISK_INDEX_BUILDER_H  
+#define DISK_INDEX_BUILDER_H  
+
+#include <string>  
+#include <cstdint>  
+#include <boost/program_options.hpp>  
+#include "disk_utils.h"  
+
+namespace diskann {  
+
+class DiskIndexBuilder {  
+public:  
+    DiskIndexBuilder(int argc, char **argv);  
+    int buildIndex();  
+
+private:  
+    void setupOptions();  
+    void parseCommandLine(int argc, char **argv);  
+    bool setMetric();  
+    bool validateAppendReorderData();  
+    std::string prepareParams();  
+    int executeBuild(const std::string& params);  
+
+    // 保存配置的成员变量  
+    std::string data_type, dist_fn, data_path, index_path_prefix, codebook_prefix, label_file, universal_label, label_type;  
+    uint32_t num_threads, R, L, disk_PQ, build_PQ, QD, Lf, filter_threshold;  
+    float B, M;  
+    bool append_reorder_data, use_opq;  
+    diskann::Metric metric;  
+};  
+
+} // namespace diskann  
+
+#endif // DISK_INDEX_BUILDER_H
+
+
+2. 创建实现文件 DiskIndexBuilder.cpp
+这个文件将包含 DiskIndexBuilder 方法的实现。
+
+// DiskIndexBuilder.cpp  
+#include "DiskIndexBuilder.h"  
+#include <iostream>  
+#include <omp.h>  
+
+namespace po = boost::program_options;  
+
+namespace diskann {  
+
+DiskIndexBuilder::DiskIndexBuilder(int argc, char **argv) {  
+    // 初始化成员变量默认值  
+    num_threads = omp_get_num_procs();  
+    R = 64; L = 100; disk_PQ = 0; build_PQ = 0; QD = 0; Lf = 0; filter_threshold = 0;  
+    B = 0.0f; M = 0.0f;  
+    append_reorder_data = false;  
+    use_opq = false;  
+    
+    // 设置命令行选项  
+    setupOptions();  
+    parseCommandLine(argc, argv);  
+}  
+
+void DiskIndexBuilder::setupOptions() {  
+    // 设置程序选项描述  
+    po::options_description desc{  
+        program_options_utils::make_program_description("build_disk_index", "构建基于磁盘的索引.")};  
+
+    desc.add_options()("help,h", "打印参数信息");  
+
+    // 必要参数  
+    po::options_description required_configs("Required");  
+    required_configs.add_options()  
+        ("data_type", po::value<std::string>(&data_type)->required(), program_options_utils::DATA_TYPE_DESCRIPTION)  
+        ("dist_fn", po::value<std::string>(&dist_fn)->required(), program_options_utils::DISTANCE_FUNCTION_DESCRIPTION)  
+        ("index_path_prefix", po::value<std::string>(&index_path_prefix)->required(), program_options_utils::INDEX_PATH_PREFIX_DESCRIPTION)  
+        ("data_path", po::value<std::string>(&data_path)->required(), program_options_utils::INPUT_DATA_PATH)  
+        ("search_DRAM_budget,B", po::value<float>(&B)->required(), "搜索索引的 DRAM 预算（GB）")  
+        ("build_DRAM_budget,M", po::value<float>(&M)->required(), "构建索引的 DRAM 预算（GB）");  
+
+    // 可选参数  
+    po::options_description optional_configs("Optional");  
+    optional_configs.add_options()  
+        ("num_threads,T", po::value<uint32_t>(&num_threads)->default_value(num_threads), program_options_utils::NUMBER_THREADS_DESCRIPTION)  
+        ("max_degree,R", po::value<uint32_t>(&R)->default_value(R), program_options_utils::MAX_BUILD_DEGREE)  
+        ("Lbuild,L", po::value<uint32_t>(&L)->default_value(L), program_options_utils::GRAPH_BUILD_COMPLEXITY)  
+        ("QD", po::value<uint32_t>(&QD)->default_value(0), "压缩的量化维度")  
+        ("codebook_prefix", po::value<std::string>(&codebook_prefix)->default_value(""), "预训练码本的路径前缀")  
+        ("PQ_disk_bytes", po::value<uint32_t>(&disk_PQ)->default_value(0), "要在SSD上压缩到的字节数；为0表示不压缩")  
+        ("append_reorder_data", po::bool_switch(&append_reorder_data)->default_value(false), "在索引中包括全精度数据。")  
+        ("build_PQ_bytes", po::value<uint32_t>(&build_PQ)->default_value(0), program_options_utils::BUIlD_GRAPH_PQ_BYTES)  
+        ("use_opq", po::bool_switch(&use_opq)->default_value(false), program_options_utils::USE_OPQ)  
+        ("label_file", po::value<std::string>(&label_file)->default_value(""), program_options_utils::LABEL_FILE)  
+        ("universal_label", po::value<std::string>(&universal_label)->default_value(""), program_options_utils::UNIVERSAL_LABEL)  
+        ("FilteredLbuild", po::value<uint32_t>(&Lf)->default_value(0), program_options_utils::FILTERED_LBUILD)  
+        ("filter_threshold,F", po::value<uint32_t>(&filter_threshold)->default_value(0), "用于拆分已有节点的阈值。")  
+        ("label_type", po::value<std::string>(&label_type)->default_value("uint"), program_options_utils::LABEL_TYPE_DESCRIPTION);  
+
+    // 合并描述  
+    desc.add(required_configs).add(optional_configs);  
+}  
+
+void DiskIndexBuilder::parseCommandLine(int argc, char **argv) {  
+    po::variables_map vm;  
+    po::store(po::parse_command_line(argc, argv, desc), vm);  
+    if (vm.count("help")) {  
+        std::cout << desc;  
+        exit(0);  
+    }  
+    po::notify(vm);  
+}  
+
+bool DiskIndexBuilder::setMetric() {  
+    if (dist_fn == "l2") {  
+        metric = diskann::Metric::L2;  
+    } else if (dist_fn == "mips") {  
+        metric = diskann::Metric::INNER_PRODUCT;  
+    } else if (dist_fn == "cosine") {  
+        metric = diskann::Metric::COSINE;  
+    } else {  
+        std::cerr << "错误: 仅支持 l2 和 mips 距离函数" << std::endl;  
+        return false;  
+    }  
+    return true;  
+}  
+
+bool DiskIndexBuilder::validateAppendReorderData() {  
+    if (append_reorder_data) {  
+        if (disk_PQ == 0) {  
+            std::cerr << "错误: 当向索引附加重排序数据时，未压缩的数据是没有必要的。" << std::endl;  
+            return false;  
+        }  
+        if (data_type != "float") {  
+            std::cerr << "错误: 目前仅支持对 float 数据类型附加重排序数据。" << std::endl;  
+            return false;  
+        }  
+    }  
+    return true;  
+}  
+
+std::string DiskIndexBuilder::prepareParams() {  
+    return std::to_string(R) + " " + std::to_string(L) + " " + std::to_string(B) + " " + std::to_string(M) + " " +  
+           std::to_string(num_threads) + " " + std::to_string(disk_PQ) + " " + std::to_string(append_reorder_data) + " " +  
+           std::to_string(build_PQ) + " " + std::to_string(QD);  
+}  
+
+int DiskIndexBuilder::executeBuild(const std::string& params) {  
+    try {  
+        if (!label_file.empty() && label_type == "ushort") {  
+            if (data_type == "int8")  
+                return diskann::build_disk_index<int8_t>(data_path.c_str(), index_path_prefix.c_str(), params.c_str(),  
+                                                         metric, use_opq, codebook_prefix, label_file, universal_label, filter_threshold, Lf);  
+            else if (data_type == "uint8")  
+                return diskann::build_disk_index<uint8_t, uint16_t>(  
+                    data_path.c_str(), index_path_prefix.c_str(), params.c_str(), metric, use_opq, codebook_prefix,  
+                    label_file, universal_label, filter_threshold, Lf);  
+            else if (data_type == "float")  
+                return diskann::build_disk_index<float, uint16_t>(  
+                    data_path.c_str(), index_path_prefix.c_str(), params.c_str(), metric, use_opq, codebook_prefix,  
+                    label_file, universal_label, filter_threshold, Lf);  
+            else {  
+                std::cerr << "错误: 不支持的数据类型" << std::endl;  
+                return -1;  
+            }  
+        } else {  
+            if (data_type == "int8")  
+                return diskann::build_disk_index<int8_t>(data_path.c_str(), index_path_prefix.c_str(), params.c_str(),  
+                                                         metric, use_opq, codebook_prefix, label_file, universal_label, filter_threshold, Lf);  
+            else if (data_type == "uint8")  
+                return diskann::build_disk_index<uint8_t>(data_path.c_str(), index_path_prefix.c_str(), params.c_str(),  
+                                                          metric, use_opq, codebook_prefix, label_file, universal_label, filter_threshold, Lf);  
+            else if (data_type == "float")  
+                return diskann::build_disk_index<float>(data_path.c_str(), index_path_prefix.c_str(), params.c_str(),  
+                                                        metric, use_opq, codebook_prefix, label_file, universal_label, filter_threshold, Lf);  
+            else {  
+                std::cerr << "错误: 不支持的数据类型" << std::endl;  
+                return -1;  
+            }  
+        }  
+    }  
+    catch (const std::exception &e) {  
+        std::cerr << "索引构建失败: " << e.what() << std::endl;  
+        return -1;  
+    }  
+}  
+
+} // namespace diskann
+
+
+3. 创建 CMake 配置文件 (CMakeLists.txt)
+这个文件将定义如何编译你的库。
+
+cmake_minimum_required(VERSION 3.10)  
+project(DiskIndexBuilderLib)  
+
+# 查找必需的依赖包  
+find_package(Boost REQUIRED)  
+find_package(OpenMP REQUIRED)  
+
+# 定义库  
+add_library(DiskIndexBuilder SHARED DiskIndexBuilder.cpp)  
+
+# 包含目录  
+target_include_directories(DiskIndexBuilder PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})  
+
+# 链接 Boost 和 OpenMP （如果需要）  
+target_link_libraries(DiskIndexBuilder PUBLIC Boost::boost OpenMP::OpenMP_CXX)
+
+4. 构建库
+确保你的系统上安装了 CMake。
+创建构建目录并编译库。
+mkdir build  
+cd build  
+cmake ..  
+make
+
+
+5. 在其他项目中使用
+你可以在其他项目中通过链接这个库并包含 DiskIndexBuilder.h 来使用它。例如：
+#include "DiskIndexBuilder.h"  
+
+int main(int argc, char **argv) {  
+    diskann::DiskIndexBuilder builder(argc, argv);  
+    int result = builder.buildIndex();  
+    return result;  
+}
+
+总结
+通过以上步骤，你可以将构建磁盘索引的逻辑封装成一个库。其他项目可以通过链接这个库并调用 DiskIndexBuilder 类的方法来实现相应的功能。确保根据你的项目结构正确处理头文件保护和包含目录。这样做将使你的代码更加模块化和可重用。
