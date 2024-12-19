@@ -1,243 +1,60 @@
-DiskIndexLib.h
+# CMake的最低版本要求  
+cmake_minimum_required(VERSION 3.10)  
 
-#ifndef DISK_INDEX_LIB_H  
-#define DISK_INDEX_LIB_H  
+# 项目名称  
+project(YourLibraryName)  
 
-#include <string>  
-#include <vector>  
+# 设置C++标准  
+set(CMAKE_CXX_STANDARD 11)  
+set(CMAKE_CXX_STANDARD_REQUIRED True)  
 
-namespace DiskIndex {  
+# 包含头文件目录  
+include_directories(include)  
 
-class DiskIndexLib {  
-public:  
-    DiskIndexLib(); // 构造函数  
-    ~DiskIndexLib(); // 析构函数  
+# 查找所有的源文件  
+file(GLOB_RECURSE SOURCES "src/*.cpp")  # 获取 src 目录下的所有 .cpp 文件  
+file(GLOB_RECURSE HEADERS "include/*.h")  # 获取 include 目录下的所有 .h 文件  
 
-    /**  
-     * 初始化成员变量  
-     *   
-     * @param type 数据类型，例如 "float" 或 "int"  
-     * @param fn 距离函数的名称，例如 "l2"  
-     * @param path 数据文件的路径  
-     * @param index_prefix 索引输出文件的前缀  
-     * @param r 生成的树的数量  
-     * @param l 每棵树中的叶子节点的数量  
-     * @param b 数据块的大小  
-     * @param m 每个节点的最大数据量  
-     * @param k 查找的近邻数量  
-     * @param res_path 结果输出文件的路径  
-     * @param num_cache 缓存的节点数量  
-     */  
-    void init(const std::string& type, const std::string& fn, const std::string& path,  
-              const std::string& index_prefix, int r, int l, double b,   
-              int m, int k, const std::string& res_path, int num_cache);  
+# 添加动态库  
+add_library(${PROJECT_NAME} SHARED ${SOURCES})  
 
-    /**  
-     * 构建磁盘索引  
-     *   
-     * 使用初始化的参数构建磁盘索引，并在后台执行相关命令。  
-     * 抛出异常如果构建过程中出现错误。  
-     */  
-    void buildDiskIndex();  
+# 安装规则（可选）  
+install(TARGETS ${PROJECT_NAME}  
+    DESTINATION lib  
+)  
 
-    /**  
-     * 搜索磁盘索引  
-     *   
-     * @param query_file 查询文件的路径  
-     * @param gt_file ground truth 文件的路径  
-     * @param L 一个整数向量，表示需要搜索的多个 L 值  
-     *   
-     * 使用初始化的参数执行搜索操作，并在后台执行相关命令。  
-     * 抛出异常如果搜索过程中出现错误。  
-     */  
-    void searchDiskIndex(const std::string& query_file,  
-                         const std::string& gt_file,  
-                         const std::vector<int>& L);  
+install(DIRECTORY include/  
+    DESTINATION include  
+)  
 
-private:  
-    // 成员变量  
-    std::string data_type;            // 数据类型  
-    std::string dist_fn;              // 距离函数  
-    std::string data_path;            // 数据路径  
-    std::string index_path_prefix;    // 索引输出路径前缀  
+# 如果有额外的链接依赖，可以在这里添加  
+# target_link_libraries(${PROJECT_NAME} ...)
 
-    int R;                             // 树的数量  
-    int L_value;                       // 每棵树中的叶子节点数量  
-    double B;                          // 数据块大小  
-    int M;                             // 每个节点的最大数据量  
-    int K;                             // 近邻数量  
-    std::string result_path;          // 结果输出路径  
-    int num_nodes_to_cache;           // 缓存的节点数量  
-};  
+命令行中导航到 your_library 项目根目录，执行以下命令以构建库：
 
-} // namespace DiskIndex  
+mkdir build  
+cd build  
+cmake ..  
+make
 
-#endif // DISK_INDEX_LIB_H
+5. 安装库（如果需要）
+如果您需要安装该库以供其他项目使用，可以执行：make install
 
 
 
-DiskIndexLib.cpp
-#include "DiskIndexLib.h"  
-#include <iostream>  
-#include <stdexcept>  
-#include <cstdlib> // for system()  
-#include <cstring> // for strerror  
-#include <cerrno>  // for errno  
+在其他项目中使用库
+cmake_minimum_required(VERSION 3.10)  
 
-namespace DiskIndex {  
+project(NewProject)  
 
-DiskIndexLib::DiskIndexLib()  
-    : data_type("float"),     // 默认数据类型  
-      dist_fn("l2"),          // 默认距离函数  
-      data_path(""),          // 默认数据路径  
-      index_path_prefix(""),  // 默认索引输出路径前缀  
-      R(0),                    // 默认树的数量为 0  
-      L_value(0),             // 默认每棵树中的叶子节点数量为 0  
-      B(0.0),                 // 默认数据块大小为 0.0  
-      M(0),                   // 默认每个节点的最大数据量为 0  
-      K(0),                   // 默认近邻数量为 0  
-      result_path(""),       // 默认结果输出路径  
-      num_nodes_to_cache(0)   // 默认缓存的节点数量为 0  
-{  
-    // 默认构造函数，初始化所有成员变量  
-}  
+set(CMAKE_CXX_STANDARD 11)  
+set(CMAKE_CXX_STANDARD_REQUIRED True)  
 
-DiskIndexLib::~DiskIndexLib() {  
-    // 析构函数实现（可以添加任何必要的清理代码）  
-}  
+# 如果库安装在自定义路径中，可以指定路径  
+include_directories(/usr/local/include)  
+link_directories(/usr/local/lib)  
 
-void DiskIndexLib::init(const std::string& type, const std::string& fn, const std::string& path,  
-                         const std::string& index_prefix, int r, int l, double b,   
-                         int m, int k, const std::string& res_path, int num_cache) {  
-    data_type = type;  
-    dist_fn = fn;  
-    data_path = path;  
-    index_path_prefix = index_prefix;  
-    R = r;  
-    L_value = l;  
-    B = b;  
-    M = m;  
-    K = k;  
-    result_path = res_path;  
-    num_nodes_to_cache = num_cache;  
-}  
+add_executable(new_executable src/main.cpp)  # 新项目的源文件  
 
-void DiskIndexLib::buildDiskIndex() {  
-    // 构建命令字符串，用于构建磁盘索引  
-    std::string command = "./apps/build_disk_index";  
-
-    // 动态拼接命令参数  
-    command += " --data_type " + data_type;  
-    command += " --dist_fn " + dist_fn;  
-    command += " --data_path " + data_path;  
-    command += " --index_path_prefix " + index_path_prefix;  
-
-    // 只在参数不为默认值时添加  
-    if (R > 0) {  
-        command += " -R " + std::to_string(R);  
-    }  
-    if (L_value > 0) {  
-        command += " -L " + std::to_string(L_value);  
-    }  
-    if (B > 0.0) {  
-        command += " -B " + std::to_string(B);  
-    }  
-    if (M > 0) {  
-        command += " -M " + std::to_string(M);  
-    }  
-
-    // 执行命令，并捕获错误信息  
-    int result = system(command.c_str());  
-    if (result == -1) {  
-        // 获取 errno 以获得原始错误信息  
-        std::string errorMsg = "构建磁盘索引失败。系统错误: " + std::string(strerror(errno));  
-        throw std::runtime_error(errorMsg);  
-    }  
-}  
-
-void DiskIndexLib::searchDiskIndex(const std::string& query_file,  
-                                    const std::string& gt_file,  
-                                    const std::vector<int>& L) {  
-    // 构建命令字符串，用于搜索磁盘索引  
-    std::string command = "./apps/search_disk_index";  
-
-    // 动态拼接命令参数  
-    command += " --data_type " + data_type;  
-    command += " --dist_fn " + dist_fn;  
-    command += " --index_path_prefix " + index_path_prefix;  
-    command += " --query_file " + query_file;  
-    command += " --gt_file " + gt_file;  
-
-    // 只在参数不为默认值时添加  
-    if (K > 0) {  
-        command += " -K " + std::to_string(K);  
-    }  
-
-    // 拼接 L 数组的值  
-    if (!L.empty()) {  
-        command += " -L ";  
-        for (size_t i = 0; i < L.size(); ++i) {  
-            command += std::to_string(L[i]);  
-            if (i < L.size() - 1) {  
-                command += " "; // 在每个值之间添加空格  
-            }  
-        }  
-    }  
-
-    // 添加结果路径和缓存节点数  
-    if (!result_path.empty()) {  
-        command += " --result_path " + result_path;  
-    }  
-    if (num_nodes_to_cache > 0) {  
-        command += " --num_nodes_to_cache " + std::to_string(num_nodes_to_cache);  
-    }  
-
-    // 执行命令，并捕获错误信息  
-    int result = system(command.c_str());  
-    if (result == -1) {  
-        // 获取 errno 以获得原始错误信息  
-        std::string errorMsg = "搜索磁盘索引失败。系统错误: " + std::string(strerror(errno));  
-        throw std::runtime_error(errorMsg);  
-    }  
-}  
-
-} // namespace DiskIndex
-
-
-
-main.cpp
-
-
-#include "DiskIndexLib.h"  
-#include <iostream>  
-
-int main() {  
-    // 创建 DiskIndexLib 类的实例  
-    DiskIndex::DiskIndexLib diskIndex;  
-
-    // 初始化参数  
-    diskIndex.init("float", "l2",   
-                   "data/sift/sift_learn.fbin",   
-                   "data/sift/disk_index_sift_learn_R32_L50_A1.2",   
-                   32, 50, 0.003, 1,   
-                   10, "data/sift/res", 1000);  
-
-    try {  
-        // 构建磁盘索引  
-        diskIndex.buildDiskIndex();  
-
-        // 搜索磁盘索引  
-        std::vector<int> L = {10, 20, 30, 40, 50, 100}; // 定义多个 L 值  
-        diskIndex.searchDiskIndex("data/sift/sift_query.fbin",   
-                                   "data/sift/sift_query_learn_gt100",   
-                                   L);  
-
-        std::cout << "处理完成。" << std::endl; // 输出成功消息  
-    } catch (const std::runtime_error& e) {  
-        std::cerr << "捕获到异常: " << e.what() << std::endl; // 捕获并输出错误消息  
-    } catch (...) {  
-        std::cerr << "捕获到未知异常。" << std::endl; // 处理其他异常  
-    }  
-
-    return 0;  
-}
+# 链接库  
+target_link_libraries(new_executable YourLibraryName)
